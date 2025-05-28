@@ -1,3 +1,4 @@
+# services/gemini.py
 import os
 import json
 import requests
@@ -20,7 +21,7 @@ class GeminiClient:
     def choose_btts_match(self, future_matches: list, past_matches: list, btts_pct: float) -> dict:
         """
         Escolhe partida com base em análise de:
-          - Up to history_limit partidas (agora 80) para frequências e streaks
+          - Até history_limit partidas (agora 80) para frequências e streaks
           - Streaks de 3,4,5 resultados
           - Janelas de 5,10,20 partidas
           - Correlação com Over/Under e placares exatos
@@ -29,13 +30,10 @@ class GeminiClient:
           - estimated_probability (float %)
           - justification (str)
         """
-        # Recorta o histórico para as últimas history_limit partidas
         history = past_matches[-self.history_limit:]
-        # Sequências finais de 3/4/5
         seq3 = ''.join('1' if m['btts'] else '0' for m in history[-3:])
         seq4 = ''.join('1' if m['btts'] else '0' for m in history[-4:])
         seq5 = ''.join('1' if m['btts'] else '0' for m in history[-5:])
-        # Janelas deslizantes de 5,10,20
         wnd5  = history[-5:]
         wnd10 = history[-10:]
         wnd20 = history[-20:]
@@ -67,12 +65,9 @@ class GeminiClient:
         if not candidates:
             raise ValueError(f"Nenhum candidato retornado: {data}")
         raw = candidates[0]["content"]["parts"][0]["text"].strip()
-
-        # Limpeza de blocos Markdown
         if raw.startswith("```"):
             lines = [ln for ln in raw.splitlines() if not ln.strip().startswith("```")]
             raw = "\n".join(lines)
-
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
