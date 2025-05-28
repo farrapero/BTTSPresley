@@ -26,32 +26,50 @@ def main():
             if not active:
                 sugg = gemini.choose_btts_match(futures, pasts, pct)
                 sel_raw = sugg.get("selection")
-                # tenta converter ou mapear "Home x Away"
+
+                # tenta converter para inteiro
                 try:
                     sel = int(sel_raw)
-                except:
+                except Exception:
+                    # tenta mapear pelo formato "Home x Away"
                     sel = next(
-                        (i for i, m in enumerate(futures, start=1)
-                         if f\"{m['home']} x {m['away']}\" == str(sel_raw)),
+                        (
+                            i for i, m in enumerate(futures, start=1)
+                            if f"{m['home']} x {m['away']}" == str(sel_raw)
+                        ),
                         None
                     )
-                if not sel or not (1 <= sel <= len(futures)):
-                    logger.error(f"Selecion inválida: {sel_raw!r} | {sugg}")
+
+                # valida índice
+                if not isinstance(sel, int) or not (1 <= sel <= len(futures)):
+                    logger.error(f"Selection inválida: {sel_raw!r} | suggestion: {sugg}")
                     time.sleep(30)
                     continue
 
                 match = futures[sel - 1]
-                minute = int(match["dateOrigin"].split()[1].split(":")[1])
-                just   = sugg.get("justification", "")
-                url    = f"https://www.bet365.bet.br/#/AVR/B146/R^{match['idx']}/"
+                # extrai minuto de dateOrigin
+                try:
+                    minute = int(match["dateOrigin"].split()[1].split(":")[1])
+                except Exception:
+                    minute = 0
+
+                justification = sugg.get("justification", "")
+                url = f"https://www.bet365.bet.br/#/AVR/B146/R^{match['idx']}/"
 
                 msg_id = bot.send_entry_message(
-                    match["league"], match["home"], match["away"],
-                    minute, just, url, pct20
+                    match["league"],
+                    match["home"],
+                    match["away"],
+                    minute,
+                    justification,
+                    url,
+                    pct20
                 )
                 if msg_id:
                     active = {"idx": match["idx"], "message_id": msg_id}
-                    logger.info(f"Enviada (idx={match['idx']}, minute={minute})")
+                    logger.info(
+                        f"Enviada sugestão (idx={match['idx']}, minute={minute}, msg_id={msg_id})"
+                    )
 
             else:
                 done = next((m for m in pasts if m["idx"] == active["idx"]), None)
@@ -61,7 +79,7 @@ def main():
                     active = None
 
         except Exception as e:
-            logger.error(f"Erro no loop: {e}")
+            logger.error(f"Erro no loop principal: {e}")
 
         time.sleep(30)
 
