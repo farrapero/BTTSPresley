@@ -1,3 +1,4 @@
+# main.py
 import time
 import logging
 
@@ -10,29 +11,26 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 def main():
-    gemini = GeminiClient()
-    bot = TelegramBot(token=TELEGRAM_TOKEN, chat_id=TELEGRAM_CHAT_ID)
-    active = None  # {'idx': str, 'message_id': int}
+    gemini = GeminiClient(history_limit=80)      # agora usa 80 resultados
+    bot    = TelegramBot(token=TELEGRAM_TOKEN, chat_id=TELEGRAM_CHAT_ID)
+    active = None  # Guarda a partida ativa e o message_id
 
     logger.info("Iniciando o loop principal de monitoramento...")
     while True:
         try:
-            # 1) Coleta de dados
             futures = fetch_future_matches()
-            pasts = fetch_past_matches(limit=50)
-            pct = calculate_btts_percentage(pasts)
+            pasts   = fetch_past_matches(limit=80)
+            pct     = calculate_btts_percentage(pasts)
 
             if not active:
-                # 2) Chama o Gemini para UMA sugestão global
+                # Pede UMA sugestão global
                 sugg = gemini.choose_btts_match(futures, pasts, pct)
-                sel = sugg["selection"]
+                sel   = int(sugg.get("selection", 1))  # cast para int
                 match = futures[sel - 1]
                 minute = int(match["dateOrigin"].split()[1].split(":")[1])
                 justification = sugg.get("justification", "")
-                # URL de entrada (padrão)</br>
                 url = f"https://www.bet365.bet.br/#/AVR/B146/R^{match['idx']}/"
 
-                # 3) Envia mensagem única
                 msg_id = bot.send_entry_message(
                     match["league"], match["home"], match["away"],
                     minute, justification, url
@@ -44,7 +42,6 @@ def main():
                     )
 
             else:
-                # 4) Aguarda e processa o resultado da partida ativa
                 done = next((m for m in pasts if m["idx"] == active["idx"]), None)
                 if done:
                     bot.edit_result(active["message_id"], done["btts"])
@@ -56,7 +53,6 @@ def main():
         except Exception as e:
             logger.error(f"Erro no loop principal: {e}")
 
-        # 5) Aguarda antes de nova iteração
         time.sleep(30)
 
 if __name__ == "__main__":
