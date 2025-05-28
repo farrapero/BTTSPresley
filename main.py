@@ -10,77 +10,59 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 logger = logging.getLogger(__name__)
 
 def main():
-    # Inicia cliente Gemini e bot Telegram
-    gemini = GeminiClient(history_limit=80)
+    gemini = GeminiClient(history_limit=120)
     bot    = TelegramBot(token=TELEGRAM_TOKEN, chat_id=TELEGRAM_CHAT_ID)
-    active = None  # mantém partida ativa e message_id
+    active = None
 
-    logger.info("Iniciando o loop principal de monitoramento...")
+    logger.info("Iniciando monitoramento...")
     while True:
         try:
-            # 1) Coleta dados das APIs
             futures = fetch_future_matches()
-            pasts   = fetch_past_matches(limit=80)
+            pasts   = fetch_past_matches(limit=120)
             pct     = calculate_btts_percentage(pasts)
+            last20  = pasts[-20:]
+            pct20   = calculate_btts_percentage(last20)
 
             if not active:
-                # 2) Solicita sugestão ao Gemini
-                suggestion = gemini.choose_btts_match(futures, pasts, pct)
-
-                # Captura seleção bruta
-                sel_raw = suggestion.get("selection")
-                sel = None
-                # Tenta converter em inteiro
+                sugg = gemini.choose_btts_match(futures, pasts, pct)
+                sel_raw = sugg.get("selection")
+                # tenta converter ou mapear "Home x Away"
                 try:
                     sel = int(sel_raw)
-                except Exception:
-                    # Se for texto no formato "Home x Away", mapeia para índice
-                    if isinstance(sel_raw, str) and ' x ' in sel_raw:
-                        home_sel, away_sel = [s.strip() for s in sel_raw.split(' x ', 1)]
-                        for i, m in enumerate(futures, start=1):
-                            if m['home'] == home_sel and m['away'] == away_sel:
-                                sel = i
-                                break
-                # Valida índice
+                except:
+                    sel = next(
+                        (i for i, m in enumerate(futures, start=1)
+                         if f\"{m['home']} x {m['away']}\" == str(sel_raw)),
+                        None
+                    )
                 if not sel or not (1 <= sel <= len(futures)):
-                    logger.error(f"Selection inválida do Gemini: {sel_raw!r} | suggestion: {suggestion}")
+                    logger.error(f"Selecion inválida: {sel_raw!r} | {sugg}")
                     time.sleep(30)
                     continue
 
-                # Monta dados da partida escolhida
                 match = futures[sel - 1]
-                try:
-                    minute = int(match["dateOrigin"].split()[1].split(":")[1])
-                except Exception:
-                    minute = 0
-                justification = suggestion.get("justification", "")
-                url = f"https://www.bet365.bet.br/#/AVR/B146/R^{match['idx']}/"
+                minute = int(match["dateOrigin"].split()[1].split(":")[1])
+                just   = sugg.get("justification", "")
+                url    = f"https://www.bet365.bet.br/#/AVR/B146/R^{match['idx']}/"
 
-                # 3) Envia mensagem no Telegram
                 msg_id = bot.send_entry_message(
                     match["league"], match["home"], match["away"],
-                    minute, justification, url
+                    minute, just, url, pct20
                 )
                 if msg_id:
                     active = {"idx": match["idx"], "message_id": msg_id}
-                    logger.info(
-                        f"Enviada sugestão (idx={match['idx']}, msg_id={msg_id}, minute={minute})"
-                    )
+                    logger.info(f"Enviada (idx={match['idx']}, minute={minute})")
 
             else:
-                # 4) Verifica resultado da partida ativa
                 done = next((m for m in pasts if m["idx"] == active["idx"]), None)
                 if done:
                     bot.edit_result(active["message_id"], done["btts"])
-                    logger.info(
-                        f"Editada mensagem {active['message_id']} — BTTS: {done['btts']}"
-                    )
+                    logger.info(f"Editada msg {active['message_id']} — BTTS: {done['btts']}")
                     active = None
 
         except Exception as e:
-            logger.error(f"Erro no loop principal: {e}")
+            logger.error(f"Erro no loop: {e}")
 
-        # 5) Aguarda antes de próxima iteração
         time.sleep(30)
 
 if __name__ == "__main__":
