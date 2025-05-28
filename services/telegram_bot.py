@@ -1,13 +1,12 @@
+# services/telegram_bot.py
 import logging
 import requests
-
 
 class TelegramBot:
     """
     Envia e edita mensagens no Telegram via HTTP.
-    Formatação personalizada: liga com emoji, minuto, análise em bloco separado e link.
+    Formatação: emoji da liga, minuto, análise em bloco e link.
     """
-    # Emojis por liga
     LEAGUE_EMOJIS = {
         "World Cup": "🌐",
         "Premiership": "🏆",
@@ -19,23 +18,10 @@ class TelegramBot:
         self.chat_id = chat_id
         self.logger = logging.getLogger(__name__)
         logging.basicConfig(level=logging.INFO)
-        # Armazena os dados da mensagem para edição futura
         self._messages = {}
 
     def send_entry_message(self, league: str, home: str, away: str,
                            minute: int, justification: str, url: str) -> int:
-        """
-        Envia recomendação de entrada com o formato:
-
-        <emoji> Liga — Time A x Time B
-        ➡️ Minuto: MM'
-
-        💡ANÁLISE: texto
-
-        🔗Link: url
-
-        Retorna o message_id para edições futuras.
-        """
         emoji = self.LEAGUE_EMOJIS.get(league, "⚽")
         text = (
             f"{emoji} <b>{league}</b> — <i>{home} x {away}</i>\n"
@@ -43,23 +29,14 @@ class TelegramBot:
             f"💡<b>ANÁLISE:</b> {justification}\n\n"
             f"🔗Link: {url}"
         )
-        payload = {
-            "chat_id": self.chat_id,
-            "text": text,
-            "parse_mode": "HTML"
-        }
+        payload = {"chat_id": self.chat_id, "text": text, "parse_mode": "HTML"}
         try:
             resp = requests.post(f"{self.base_url}/sendMessage", json=payload)
             resp.raise_for_status()
             msg_id = resp.json()["result"]["message_id"]
-            # Armazena para editar depois
             self._messages[msg_id] = {
-                "league": league,
-                "home": home,
-                "away": away,
-                "minute": minute,
-                "justification": justification,
-                "url": url
+                "league": league, "home": home, "away": away,
+                "minute": minute, "justification": justification, "url": url
             }
             return msg_id
         except requests.RequestException as e:
@@ -67,15 +44,10 @@ class TelegramBot:
             return None
 
     def edit_result(self, message_id: int, success: bool) -> None:
-        """
-        Edita a mensagem anterior, inserindo ✅ ou ❌ após o minuto.
-        Mantém o mesmo layout original.
-        """
         data = self._messages.get(message_id)
         if not data:
             self.logger.error(f"Mensagem {message_id} não encontrada para edição")
             return
-
         result_emoji = "✅" if success else "❌"
         emoji = self.LEAGUE_EMOJIS.get(data["league"], "⚽")
         text = (
